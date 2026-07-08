@@ -435,17 +435,27 @@
     if (raw === total) return fmt(total) + "<small>G</small>";
     return fmt(raw) + "<small>G</small>→" + fmt(total) + "<small>G</small>";
   }
-  // 表の表示用：タッチした行（未選択なら最終）を起点に、そこから上へ積み上げた累計
+  // 表の表示用：各行は「1つ下の行までのトータル → この行までのトータル」のつなぎ表示
+  // 起点の行（一番下、またはタッチした行）だけは「ハマりG数 → 加算込みトータル」
   // 起点より下の行は区間外なので「—」
   function cumTableText(key) {
     var origin = selected === null ? "fin" : selected;
-    if (key === "now") return pairText(cumTapRaw(origin), cumTap(origin));
+    if (key === "now") {
+      if (origin === "now") return fmt(nowG) + "G";
+      var base = origin === "fin"
+        ? finG + sumRange(0, bonuses.length - 1)
+        : sumRange(+origin, bonuses.length - 1);
+      return pairText(base, base + nowG);
+    }
     if (key === "fin") return origin === "fin" ? fmt(finG) + "G" : "—";
     var i = +key;
     if (origin === "now") return "—";
-    if (origin === "fin") return pairText(finG + sumRangeRaw(0, i), finG + sumRange(0, i));
-    var k = +origin;
-    return i < k ? "—" : pairText(sumRangeRaw(k, i), sumRange(k, i));
+    var k = origin === "fin" ? 0 : +origin;
+    if (i < k) return "—";
+    var start = origin === "fin" ? finG : 0;
+    if (i === k) return pairText(start + bonuses[i].g, start + subtotal(bonuses[i]));
+    var before = start + sumRange(k, i - 1);
+    return pairText(before, before + subtotal(bonuses[i]));
   }
   // タイル表示用：タッチした行から上（現在側）へ加算したトータル
   // 例：3回前をタッチ → 3回前 + 2回前 + 前回 + 現在ハマり
