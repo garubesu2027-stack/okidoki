@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>沖ドキ 有利区間カウンター</title>
+<style>
+  :root {
+    --page: #f5f5f2;
+    --surface: #fcfcfb;
+    --ink: #171715;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --accent: #2a78d6;
+    --gold: #eda100;
+    --gold-ink: #8a5d00;
+    --tile-hi: #fff7e4;
+    --bb: #e34948;
+    --rb: #2a78d6;
+    --danger: #d03b3b;
+    --fin-bg: #e9f4e9;
+    --fin-ink: #1b6e1b;
+    --sel-bg: #fdeaea;
+    --now-bg: #efeafa;
+    --now-ink: #5b48a8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #f4f4f1;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --accent: #3987e5;
+      --gold: #eda100;
+      --gold-ink: #f0b435;
+      --tile-hi: #2a2415;
+      --bb: #e66767;
+      --rb: #3987e5;
+      --danger: #e66767;
+      --fin-bg: #172a1a;
+      --fin-ink: #52c452;
+      --sel-bg: #3a1d1d;
+      --now-bg: #262040;
+      --now-ink: #a99df0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #f4f4f1;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --accent: #3987e5;
+    --gold: #eda100;
+    --gold-ink: #f0b435;
+    --tile-hi: #2a2415;
+    --bb: #e66767;
+    --rb: #3987e5;
+    --danger: #e66767;
+    --fin-bg: #172a1a;
+    --fin-ink: #52c452;
+    --sel-bg: #3a1d1d;
+    --now-bg: #262040;
+    --now-ink: #a99df0;
+  }
+  :root[data-theme="light"] {
+    --page: #f5f5f2;
+    --surface: #fcfcfb;
+    --ink: #171715;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --accent: #2a78d6;
+    --gold: #eda100;
+    --gold-ink: #8a5d00;
+    --tile-hi: #fff7e4;
+    --bb: #e34948;
+    --rb: #2a78d6;
+    --danger: #d03b3b;
+    --fin-bg: #e9f4e9;
+    --fin-ink: #1b6e1b;
+    --sel-bg: #fdeaea;
+    --now-bg: #efeafa;
+    --now-ink: #5b48a8;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  /* iOSのiframe内スクロール不具合対策：ツール自身がスクロール領域を持つ */
+  .scroller {
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+    /* タップ判定の遅延をなくし、スクロールとの競合を減らす */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .app { max-width: 720px; margin: 0 auto; padding: 20px 16px 56px; }
+
+  header.top { margin-bottom: 16px; }
+  header.top h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; text-wrap: balance; }
+  header.top p { margin: 0; color: var(--ink-2); font-size: 13px; max-width: 46em; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .card h2 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  @media (max-width: 480px) { .tiles { grid-template-columns: 1fr; } }
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .tile.hi { background: var(--now-bg); border-color: var(--now-ink); }
+  .tile.hi .v { color: var(--now-ink); }
+  .tile .k {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  .tile.hi .k { color: var(--now-ink); }
+  .tile .v { font-size: 30px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .tile .v small { font-size: 15px; font-weight: 600; color: var(--ink-2); margin-left: 2px; }
+  .tile .sub { font-size: 12px; color: var(--ink-2); margin-top: 2px; min-height: 1.6em; }
+
+  /* ---- 入力 ---- */
+  input[type="number"] {
+    width: 86px;
+    padding: 8px;
+    border: 1px solid var(--baseline);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  select {
+    padding: 8px 6px;
+    border: 1px solid var(--baseline);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  select.t-BB { color: var(--bb); }
+  select.t-RB { color: var(--rb); }
+  input:focus-visible, select:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .tbl-wrap { overflow-x: auto; border: 1.5px solid var(--baseline); border-radius: 8px; margin: 0 -8px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 4px; text-align: right; white-space: nowrap; font-size: 13px; border: 1px solid var(--grid); }
+  td:first-child { text-align: center; }
+  td:nth-child(2) { text-align: right; }
+  td:nth-child(3), td:nth-child(5) { text-align: center; }
+  th:first-child, td:first-child { width: 44px; }
+  thead th {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    text-align: center;
+    border-bottom: 1px solid var(--baseline);
+  }
+  tbody tr { cursor: pointer; }
+  td input[type="number"] { width: 72px; padding: 8px 6px; }
+  td select { padding: 8px 4px; }
+  td.name { font-weight: 700; }
+  tr.now-row td { background: var(--now-bg); }
+  tr.now-row td.name { color: var(--now-ink); }
+  tr.fin-row td { background: var(--fin-bg); }
+  tr.fin-row td.name { color: var(--fin-ink); }
+  tr.selected td { background: var(--tile-hi); }
+  tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+  .bb-label { color: var(--bb); font-weight: 700; }
+  .rb-label { color: var(--rb); font-weight: 700; }
+
+  button {
+    padding: 8px 14px;
+    border: 1px solid var(--baseline);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 40px;
+  }
+  button.danger { color: var(--danger); border-color: var(--danger); }
+  button.danger.armed { background: var(--danger); color: #fff; }
+  .btn-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .mode-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mode-btn { flex: 1; min-width: 96px; font-variant-numeric: tabular-nums; }
+  .mode-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .del-btn {
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 400;
+    min-height: 32px;
+    border-color: var(--grid);
+    color: var(--muted);
+  }
+  .cum-btn {
+    padding: 6px 10px;
+    min-height: 40px;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--gold-ink);
+    border-color: var(--gold);
+    background: transparent;
+    border-radius: 8px;
+  }
+
+  .disclaimer { margin-top: 4px; font-size: 12px; color: var(--muted); max-width: 56em; }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="scroller">
+<div class="app">
+  <header class="top">
+    <h1>沖ドキ 有利区間カウンター</h1>
+    <p>一番下の「最終」から上に向かって加算し、一番上の「現在」（ハマり中）までの合計が有利区間トータルです。ボーナス消化分の加算（BB+69/RB+29など）は下のモードで切り替えられます。</p>
+  </header>
+
+  <div class="tiles">
+    <div class="tile">
+      <div class="k">推定有利区間トータル</div>
+      <div class="v" id="totalV">—</div>
+      <div class="sub" id="totalSub"></div>
+    </div>
+    <div class="tile hi">
+      <div class="k">タッチした行からのトータル</div>
+      <div class="v" id="fromV">—</div>
+      <div class="sub" id="fromSub">下の表の金色のボタンをタッチしてください</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>加算モード（ボーナス消化分）</h2>
+    <div class="mode-row">
+      <button class="mode-btn active" data-mode="0">BB+69／RB+29</button>
+      <button class="mode-btn" data-mode="1">BB+59／RB+24</button>
+      <button class="mode-btn" data-mode="2">加算なし</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>履歴（下＝最終、上＝現在）</h2>
+    <div class="btn-row" style="margin:0 0 12px">
+      <button id="btnAddBB"><span class="bb-label">＋ BB</span></button>
+      <button id="btnAddRB"><span class="rb-label">＋ RB</span></button>
+      <button class="danger" id="btnClear">全履歴をクリア</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>履歴</th>
+            <th>G数</th>
+            <th></th>
+            <th>トータル</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="histBody"></tbody>
+      </table>
+    </div>
+    <p class="disclaimer">
+      「全履歴をクリア」は誤操作防止のため2回押しです（1回目で赤くなり、3秒以内にもう一度押すと消去）。<br>
+      <span id="saveNote"></span><br>
+      ※ 実際の有利区間はモード移行や連チャン中の挙動によりズレる場合があります。あくまで推定値です。
+    </p>
+  </div>
+
+</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var MODES = [
+    { BB: 69, RB: 29 },
+    { BB: 59, RB: 24 },
+    { BB: 0, RB: 0 }
+  ];
+  var modeIdx = 0;
+
+  // 自動保存：localStorage → cookie の順で使えるものを選ぶ
+  // （claude.aiのArtifact内などサンドボックス環境ではどちらも使えない場合がある）
+  var STORAGE_KEY = "okidoki-yuri-tool-v1";
+  var storage = (function () {
+    var T = "__okidoki_test__";
+    try {
+      localStorage.setItem(T, "1");
+      if (localStorage.getItem(T) === "1") {
+        localStorage.removeItem(T);
+        return {
+          get: function (k) { return localStorage.getItem(k); },
+          set: function (k, v) { localStorage.setItem(k, v); }
+        };
+      }
+    } catch (e) {}
+    try {
+      document.cookie = T + "=1; max-age=60; path=/";
+      if (document.cookie.indexOf(T + "=1") !== -1) {
+        document.cookie = T + "=; max-age=0; path=/";
+        return {
+          get: function (k) {
+            var m = document.cookie.match(new RegExp("(?:^|; )" + k + "=([^;]*)"));
+            return m ? decodeURIComponent(m[1]) : null;
+          },
+          set: function (k, v) {
+            document.cookie = k + "=" + encodeURIComponent(v) + "; max-age=31536000; path=/";
+          }
+        };
+      }
+    } catch (e) {}
+    return null;
+  })();
+  function saveState() {
+    if (!storage) return;
+    try {
+      storage.set(STORAGE_KEY, JSON.stringify({
+        nowG: nowG, finG: finG, bonuses: bonuses, modeIdx: modeIdx
+      }));
+    } catch (e) { /* 保存できない環境では何もしない */ }
+  }
+  function loadState() {
+    if (!storage) return;
+    try {
+      var raw = storage.get(STORAGE_KEY);
+      if (!raw) return;
+      var s = JSON.parse(raw);
+      if (typeof s.nowG === "number" && s.nowG >= 0) nowG = s.nowG;
+      if (typeof s.finG === "number" && s.finG >= 0) finG = s.finG;
+      if (typeof s.modeIdx === "number" && MODES[s.modeIdx]) modeIdx = s.modeIdx;
+      if (Array.isArray(s.bonuses)) {
+        var ok = s.bonuses.filter(function (b) {
+          return b && (b.type === "BB" || b.type === "RB") && typeof b.g === "number" && b.g >= 0;
+        });
+        bonuses = ok.length ? ok : bonuses;
+      }
+    } catch (e) { /* 壊れたデータは無視して初期値で開始 */ }
+  }
+
+  // 表の構成：現在（一番上・ハマり中）→ 前回 → 2回前 → … → 最終（一番下）
+  // bonuses は「最終に近い順」（[0]＝一番下のボーナス…最後＝前回）
+  var nowG = 0;   // 現在（ハマり中）
+  var finG = 0;   // 最終
+  function defaultBonuses() {
+    return [
+      { type: "BB", g: 0 },
+      { type: "BB", g: 0 },
+      { type: "BB", g: 0 }
+    ];
+  }
+  var bonuses = defaultBonuses();
+  var selected = null; // "now" | "fin" | ボーナスのindex
+
+  function $(id) { return document.getElementById(id); }
+  function fmt(n) { return Math.round(n).toLocaleString("ja-JP"); }
+  // G数が0（未入力）の行はトータルに加算しない
+  function subtotal(b) { return b.g > 0 ? b.g + (MODES[modeIdx][b.type] || 0) : 0; }
+  // 加算前（ボーナスを引いた時点のG数）だけの小計
+  function subtotalRaw(b) { return b.g > 0 ? b.g : 0; }
+  function grandTotal() {
+    return bonuses.reduce(function (a, b) { return a + subtotal(b); }, 0) + finG + nowG;
+  }
+  function grandTotalRaw() {
+    return bonuses.reduce(function (a, b) { return a + subtotalRaw(b); }, 0) + finG + nowG;
+  }
+  function sumRange(a, b) {
+    var s = 0;
+    for (var j = a; j <= b; j++) s += subtotal(bonuses[j]);
+    return s;
+  }
+  function sumRangeRaw(a, b) {
+    var s = 0;
+    for (var j = a; j <= b; j++) s += subtotalRaw(bonuses[j]);
+    return s;
+  }
+  // 「200G→269G」形式（加算がなく同値なら1つだけ）
+  function pairText(raw, total) {
+    return raw === total ? fmt(total) + "G" : fmt(raw) + "G→" + fmt(total) + "G";
+  }
+  function pairHTML(raw, total) {
+    if (raw === total) return fmt(total) + "<small>G</small>";
+    return fmt(raw) + "<small>G</small>→" + fmt(total) + "<small>G</small>";
+  }
+  // 表の表示用：タッチした行（未選択なら最終）を起点に、そこから上へ積み上げた累計
+  // 起点より下の行は区間外なので「—」
+  function cumTableText(key) {
+    var origin = selected === null ? "fin" : selected;
+    if (key === "now") return pairText(cumTapRaw(origin), cumTap(origin));
+    if (key === "fin") return origin === "fin" ? fmt(finG) + "G" : "—";
+    var i = +key;
+    if (origin === "now") return "—";
+    if (origin === "fin") return pairText(finG + sumRangeRaw(0, i), finG + sumRange(0, i));
+    var k = +origin;
+    return i < k ? "—" : pairText(sumRangeRaw(k, i), sumRange(k, i));
+  }
+  // タイル表示用：タッチした行から上（現在側）へ加算したトータル
+  // 例：3回前をタッチ → 3回前 + 2回前 + 前回 + 現在ハマり
+  function cumFrom(i) {
+    var s = nowG;
+    for (var j = i; j < bonuses.length; j++) s += subtotal(bonuses[j]);
+    return s;
+  }
+  function cumFromRaw(i) {
+    var s = nowG;
+    for (var j = i; j < bonuses.length; j++) s += subtotalRaw(bonuses[j]);
+    return s;
+  }
+  function cumTap(key) {
+    if (key === "fin") return grandTotal();
+    if (key === "now") return nowG;
+    return cumFrom(+key);
+  }
+  function cumTapRaw(key) {
+    if (key === "fin") return grandTotalRaw();
+    if (key === "now") return nowG;
+    return cumFromRaw(+key);
+  }
+  // 行の呼び名：最終のすぐ上＝一番大きい「◯回前」、ボーナスの一番上＝前回
+  function rowName(i) {
+    var back = bonuses.length - i;
+    return back === 1 ? "前回" : back + "回前";
+  }
+  function nameOf(key) {
+    if (key === "fin") return "最終";
+    if (key === "now") return "現在";
+    return rowName(+key);
+  }
+
+  function updateTiles() {
+    $("totalV").innerHTML = pairHTML(grandTotalRaw(), grandTotal());
+    $("totalSub").textContent = "ボーナス" + bonuses.length + "回分 + 最終" + fmt(finG) + "G + 現在" + fmt(nowG) + "G";
+    if (selected === null) {
+      $("fromV").textContent = "—";
+      $("fromSub").textContent = "下の表の金色のボタンをタッチしてください";
+    } else {
+      $("fromV").innerHTML = pairHTML(cumTapRaw(selected), cumTap(selected));
+      $("fromSub").textContent = selected === "fin"
+        ? "最終から現在まで（全履歴）"
+        : selected === "now"
+          ? "現在のハマりのみ"
+          : nameOf(selected) + "から現在まで加算";
+    }
+  }
+
+  function updateCumCells() {
+    var trs = $("histBody").querySelectorAll("tr");
+    trs.forEach(function (tr) {
+      var key = tr.dataset.k;
+      tr.querySelector(".cum-btn").textContent = cumTableText(key);
+      tr.classList.toggle("selected", selected === key);
+    });
+    updateTiles();
+    saveState();
+  }
+
+  function render() {
+    var tbody = $("histBody");
+    var html = "";
+
+    // 一番上：現在（ハマり中）
+    html += '<tr class="now-row" data-k="now">' +
+      '<td class="name">現在</td>' +
+      '<td><input type="number" id="nowInput" value="' + nowG + '" min="0" inputmode="numeric"></td>' +
+      "<td></td>" +
+      '<td><button class="cum-btn" data-k="now"></button></td>' +
+      "<td></td>" +
+      "</tr>";
+
+    // ボーナス：前回（配列の最後）→ … → 一番下のボーナス（配列の先頭）
+    for (var i = bonuses.length - 1; i >= 0; i--) {
+      var b = bonuses[i];
+      html += '<tr data-k="' + i + '">' +
+        '<td class="name"></td>' +
+        '<td><input type="number" class="rg" data-i="' + i + '" value="' + b.g + '" min="0" inputmode="numeric"></td>' +
+        '<td><select class="rtype t-' + b.type + '" data-i="' + i + '">' +
+          '<option value="BB"' + (b.type === "BB" ? " selected" : "") + ">BB</option>" +
+          '<option value="RB"' + (b.type === "RB" ? " selected" : "") + ">RB</option>" +
+        "</select></td>" +
+        '<td><button class="cum-btn" data-k="' + i + '"></button></td>' +
+        '<td><button class="del-btn" data-i="' + i + '" aria-label="削除">✕</button></td>' +
+        "</tr>";
+    }
+
+    // 一番下：最終
+    html += '<tr class="fin-row" data-k="fin">' +
+      '<td class="name">最終</td>' +
+      '<td><input type="number" id="finInput" value="' + finG + '" min="0" inputmode="numeric"></td>' +
+      "<td></td>" +
+      '<td><button class="cum-btn" data-k="fin"></button></td>' +
+      "<td></td>" +
+      "</tr>";
+
+    tbody.innerHTML = html;
+
+    $("nowInput").addEventListener("input", function () {
+      var v = parseFloat(this.value);
+      nowG = isFinite(v) && v >= 0 ? v : 0;
+      updateCumCells();
+    });
+    $("finInput").addEventListener("input", function () {
+      var v = parseFloat(this.value);
+      finG = isFinite(v) && v >= 0 ? v : 0;
+      updateCumCells();
+    });
+    tbody.querySelectorAll("select.rtype").forEach(function (sel) {
+      sel.addEventListener("change", function () {
+        bonuses[+sel.dataset.i].type = sel.value;
+        sel.className = "rtype t-" + sel.value;
+        updateCumCells();
+      });
+    });
+    tbody.querySelectorAll("input.rg").forEach(function (inp) {
+      inp.addEventListener("input", function () {
+        var v = parseFloat(inp.value);
+        bonuses[+inp.dataset.i].g = isFinite(v) && v >= 0 ? v : 0;
+        updateCumCells();
+      });
+    });
+    // 行のどこをタッチしても選択（入力欄・プルダウン・削除ボタンは除く）
+    function toggleSelect(key) {
+      // 同じ行をもう一度タッチすると解除（最終起点に戻る）
+      selected = selected === key ? null : key;
+      updateCumCells();
+    }
+    tbody.querySelectorAll(".cum-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () { toggleSelect(btn.dataset.k); });
+    });
+    tbody.querySelectorAll("tr").forEach(function (tr) {
+      tr.addEventListener("click", function (e) {
+        var tag = e.target.tagName;
+        if (tag === "INPUT" || tag === "SELECT" || tag === "BUTTON" || tag === "OPTION") return;
+        toggleSelect(tr.dataset.k);
+      });
+    });
+    // 「0」の上から入力しても 0200 にならないように
+    tbody.querySelectorAll('input[type="number"]').forEach(function (inp) {
+      inp.addEventListener("focus", function () {
+        var self = this;
+        setTimeout(function () { self.select(); }, 0);
+      });
+      inp.addEventListener("input", function () {
+        if (/^0\d/.test(this.value)) this.value = this.value.replace(/^0+(?=\d)/, "");
+      });
+    });
+    tbody.querySelectorAll(".del-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        bonuses.splice(+btn.dataset.i, 1);
+        selected = null;
+        render();
+      });
+    });
+    updateCumCells();
+  }
+
+  // 追加：現在のすぐ下（＝前回の位置）＝配列の末尾
+  function addBonus(type) {
+    bonuses.push({ type: type, g: 0 });
+    selected = null;
+    render();
+    var inp = $("histBody").querySelector("input.rg");
+    if (inp) inp.focus();
+  }
+  $("btnAddBB").addEventListener("click", function () { addBonus("BB"); });
+  $("btnAddRB").addEventListener("click", function () { addBonus("RB"); });
+
+  // 全履歴クリア：2回押し方式（Artifact内ではconfirmが使えないため）
+  var clearTimer = null;
+  var btnClear = $("btnClear");
+  btnClear.addEventListener("click", function () {
+    if (clearTimer) {
+      clearTimeout(clearTimer);
+      clearTimer = null;
+      btnClear.classList.remove("armed");
+      btnClear.textContent = "全履歴をクリア";
+      bonuses = defaultBonuses();
+      nowG = 0;
+      finG = 0;
+      selected = null;
+      render();
+      return;
+    }
+    btnClear.classList.add("armed");
+    btnClear.textContent = "もう一度押すと全消去";
+    clearTimer = setTimeout(function () {
+      clearTimer = null;
+      btnClear.classList.remove("armed");
+      btnClear.textContent = "全履歴をクリア";
+    }, 3000);
+  });
+
+
+  // 加算モードの切り替え
+  document.querySelectorAll(".mode-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      modeIdx = +btn.dataset.mode;
+      document.querySelectorAll(".mode-btn").forEach(function (b) {
+        b.classList.toggle("active", b === btn);
+      });
+      updateCumCells();
+    });
+  });
+
+  // 前回のデータを復元してから描画
+  loadState();
+  document.querySelectorAll(".mode-btn").forEach(function (b) {
+    b.classList.toggle("active", +b.dataset.mode === modeIdx);
+  });
+  $("saveNote").textContent = storage
+    ? "✅ 入力したデータはこの端末に自動保存され、次に開いたときに復元されます。"
+    : "⚠️ この環境ではデータの自動保存が使えません（閉じると入力内容は消えます）。";
+  render();
+})();
+</script>
+
+</html>
