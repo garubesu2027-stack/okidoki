@@ -215,6 +215,8 @@
   tr.now-row td.name { color: var(--now-ink); }
   tr.fin-row td { background: var(--fin-bg); }
   tr.fin-row td.name { color: var(--fin-ink); }
+  tr.fin-row td { border-bottom: 2px solid var(--baseline); }
+  td.old-name { color: var(--muted); font-size: 11px; }
   tr.selected td { background: var(--tile-hi); }
   tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
   .bb-label { color: var(--bb); font-weight: 700; }
@@ -294,10 +296,11 @@
   </div>
 
   <div class="card">
-    <h2>履歴（下＝最終、上＝現在）</h2>
+    <h2>履歴（下＝最終、上＝現在。最終より下は前の履歴用）</h2>
     <div class="btn-row" style="margin:0 0 12px">
       <button id="btnAddBB"><span class="bb-label">＋ BB</span></button>
       <button id="btnAddRB"><span class="rb-label">＋ RB</span></button>
+      <button id="btnAddOld">＋ 下に追加</button>
       <button class="danger" id="btnClear">全履歴をクリア</button>
     </div>
     <div class="tbl-wrap">
@@ -316,6 +319,7 @@
     </div>
     <p class="disclaimer">
       「全履歴をクリア」は誤操作防止のため2回押しです（1回目で赤くなり、3秒以内にもう一度押すと消去）。<br>
+      「最終」より下の枠（下1〜）は最終より前の履歴用で、通常はトータルに含まれません。下の枠の金色ボタンをタッチすると、その行を起点に上へ向かって全部加算します。<br>
       <span id="saveNote"></span><br>
       ※ 実際の有利区間はモード移行や連チャン中の挙動によりズレる場合があります。あくまで推定値です。
     </p>
@@ -371,7 +375,7 @@
     if (!storage) return;
     try {
       storage.set(STORAGE_KEY, JSON.stringify({
-        nowG: nowG, finG: finG, bonuses: bonuses, modeIdx: modeIdx
+        nowG: nowG, finG: finG, bonuses: bonuses, oldBonuses: oldBonuses, modeIdx: modeIdx
       }));
     } catch (e) { /* 保存できない環境では何もしない */ }
   }
@@ -384,12 +388,16 @@
       if (typeof s.nowG === "number" && s.nowG >= 0) nowG = s.nowG;
       if (typeof s.finG === "number" && s.finG >= 0) finG = s.finG;
       if (typeof s.modeIdx === "number" && MODES[s.modeIdx]) modeIdx = s.modeIdx;
-      if (Array.isArray(s.bonuses)) {
-        var ok = s.bonuses.filter(function (b) {
+      function validRows(a) {
+        return a.filter(function (b) {
           return b && (b.type === "BB" || b.type === "RB") && typeof b.g === "number" && b.g >= 0;
         });
+      }
+      if (Array.isArray(s.bonuses)) {
+        var ok = validRows(s.bonuses);
         bonuses = ok.length ? ok : bonuses;
       }
+      if (Array.isArray(s.oldBonuses)) oldBonuses = validRows(s.oldBonuses);
     } catch (e) { /* 壊れたデータは無視して初期値で開始 */ }
   }
 
@@ -405,7 +413,16 @@
     ];
   }
   var bonuses = defaultBonuses();
-  var selected = null; // "now" | "fin" | ボーナスのindex
+  // 最終より前（下側）の履歴。[0]＝最終のすぐ下…最後＝一番下
+  function defaultOldBonuses() {
+    return [
+      { type: "BB", g: 0 },
+      { type: "BB", g: 0 },
+      { type: "BB", g: 0 }
+    ];
+  }
+  var oldBonuses = defaultOldBonuses();
+  var selected = null; // "now" | "fin" | ボーナスのindex | "o"+下側のindex
 
   function $(id) { return document.getElementById(id); }
   function fmt(n) { return Math.round(n).toLocaleString("ja-JP"); }
@@ -429,6 +446,19 @@
     for (var j = a; j <= b; j++) s += subtotalRaw(bonuses[j]);
     return s;
   }
+  // ボーナス加算分（G数未入力なら0）
+  function bonusAdd(b) { return b.g > 0 ? (MODES[modeIdx][b.type] || 0) : 0; }
+  // 下側（最終より前）の小計
+  function sumOldRange(a, b) {
+    var s = 0;
+    for (var j = a; j <= b; j++) s += subtotal(oldBonuses[j]);
+    return s;
+  }
+  function sumOldRangeRaw(a, b) {
+    var s = 0;
+    for (var j = a; j <= b; j++) s += subtotalRaw(oldBonuses[j]);
+    return s;
+  }
   // 「200G→269G」形式（加算がなく同値なら1つだけ）
   function pairText(raw, total) {
     return raw === total ? fmt(total) + "G" : fmt(raw) + "G→" + fmt(total) + "G";
@@ -442,16 +472,31 @@
   // 起点より下の行は区間外なので「—」
   function cumTableText(key) {
     var origin = selected === null ? "fin" : selected;
+    var isOldOrigin = origin.charAt(0) === "o";
+    var oj = isOldOrigin ? +origin.slice(1) : -1;
+    // 下側（最終より前）の行：下側を起点にしたときだけ数える
+    if (key.charAt(0) === "o") {
+      if (!isOldOrigin) return "—";
+      var i = +key.slice(1);
+      if (i > oj) return "—";
+      var after = sumOldRange(i, oj);
+      return pairText(after - bonusAdd(oldBonuses[i]), after);
+    }
     if (key === "now") return fmt(cumTap(origin)) + "G";
-    if (key === "fin") return origin === "fin" ? fmt(finG) + "G" : "—";
-    var i = +key;
+    if (key === "fin") {
+      if (origin === "fin") return fmt(finG) + "G";
+      if (isOldOrigin) return fmt(sumOldRange(0, oj) + finG) + "G";
+      return "—";
+    }
+    var i2 = +key;
     if (origin === "now") return "—";
-    var k = origin === "fin" ? 0 : +origin;
-    if (i < k) return "—";
-    var start = origin === "fin" ? finG : 0;
-    var after = start + sumRange(k, i);
-    var add = bonuses[i].g > 0 ? (MODES[modeIdx][bonuses[i].type] || 0) : 0;
-    return pairText(after - add, after);
+    var k = (origin === "fin" || isOldOrigin) ? 0 : +origin;
+    if (i2 < k) return "—";
+    var start = origin === "fin" ? finG
+      : isOldOrigin ? sumOldRange(0, oj) + finG
+      : 0;
+    var after2 = start + sumRange(k, i2);
+    return pairText(after2 - bonusAdd(bonuses[i2]), after2);
   }
   // タイル表示用：タッチした行から上（現在側）へ加算したトータル
   // 例：3回前をタッチ → 3回前 + 2回前 + 前回 + 現在ハマり
@@ -468,11 +513,13 @@
   function cumTap(key) {
     if (key === "fin") return grandTotal();
     if (key === "now") return nowG;
+    if (key.charAt(0) === "o") return sumOldRange(0, +key.slice(1)) + grandTotal();
     return cumFrom(+key);
   }
   function cumTapRaw(key) {
     if (key === "fin") return grandTotalRaw();
     if (key === "now") return nowG;
+    if (key.charAt(0) === "o") return sumOldRangeRaw(0, +key.slice(1)) + grandTotalRaw();
     return cumFromRaw(+key);
   }
   // 行の呼び名：最終のすぐ上＝一番大きい「◯回前」、ボーナスの一番上＝前回
@@ -483,6 +530,7 @@
   function nameOf(key) {
     if (key === "fin") return "最終";
     if (key === "now") return "現在";
+    if (key.charAt(0) === "o") return "最終の下" + (+key.slice(1) + 1);
     return rowName(+key);
   }
 
@@ -541,7 +589,7 @@
         "</tr>";
     }
 
-    // 一番下：最終
+    // 最終
     html += '<tr class="fin-row" data-k="fin">' +
       '<td class="name">最終</td>' +
       '<td><input type="number" id="finInput" value="' + finG + '" min="0" inputmode="numeric"></td>' +
@@ -549,6 +597,21 @@
       '<td><button class="cum-btn" data-k="fin"></button></td>' +
       "<td></td>" +
       "</tr>";
+
+    // 最終より前（下側）の履歴：下1 → 下2 → …
+    for (var j = 0; j < oldBonuses.length; j++) {
+      var ob = oldBonuses[j];
+      html += '<tr class="old-row" data-k="o' + j + '">' +
+        '<td class="name old-name">下' + (j + 1) + "</td>" +
+        '<td><input type="number" class="og" data-i="' + j + '" value="' + ob.g + '" min="0" inputmode="numeric"></td>' +
+        '<td><select class="otype t-' + ob.type + '" data-i="' + j + '">' +
+          '<option value="BB"' + (ob.type === "BB" ? " selected" : "") + ">BB</option>" +
+          '<option value="RB"' + (ob.type === "RB" ? " selected" : "") + ">RB</option>" +
+        "</select></td>" +
+        '<td><button class="cum-btn" data-k="o' + j + '"></button></td>' +
+        '<td><button class="del-btn" data-old="1" data-i="' + j + '" aria-label="削除">✕</button></td>' +
+        "</tr>";
+    }
 
     tbody.innerHTML = html;
 
@@ -573,6 +636,20 @@
       inp.addEventListener("input", function () {
         var v = parseFloat(inp.value);
         bonuses[+inp.dataset.i].g = isFinite(v) && v >= 0 ? v : 0;
+        updateCumCells();
+      });
+    });
+    tbody.querySelectorAll("select.otype").forEach(function (sel) {
+      sel.addEventListener("change", function () {
+        oldBonuses[+sel.dataset.i].type = sel.value;
+        sel.className = "otype t-" + sel.value;
+        updateCumCells();
+      });
+    });
+    tbody.querySelectorAll("input.og").forEach(function (inp) {
+      inp.addEventListener("input", function () {
+        var v = parseFloat(inp.value);
+        oldBonuses[+inp.dataset.i].g = isFinite(v) && v >= 0 ? v : 0;
         updateCumCells();
       });
     });
@@ -604,7 +681,7 @@
     });
     tbody.querySelectorAll(".del-btn").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        bonuses.splice(+btn.dataset.i, 1);
+        (btn.dataset.old ? oldBonuses : bonuses).splice(+btn.dataset.i, 1);
         selected = null;
         render();
       });
@@ -622,6 +699,12 @@
   }
   $("btnAddBB").addEventListener("click", function () { addBonus("BB"); });
   $("btnAddRB").addEventListener("click", function () { addBonus("RB"); });
+  // 最終の下（下側の一番下）に枠を追加
+  $("btnAddOld").addEventListener("click", function () {
+    oldBonuses.push({ type: "BB", g: 0 });
+    selected = null;
+    render();
+  });
 
   // 全履歴クリア：2回押し方式（Artifact内ではconfirmが使えないため）
   var clearTimer = null;
@@ -633,6 +716,7 @@
       btnClear.classList.remove("armed");
       btnClear.textContent = "全履歴をクリア";
       bonuses = defaultBonuses();
+      oldBonuses = defaultOldBonuses();
       nowG = 0;
       finG = 0;
       selected = null;
