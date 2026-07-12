@@ -300,7 +300,7 @@
     <div class="btn-row" style="margin:0 0 12px">
       <button id="btnAddBB"><span class="bb-label">＋ BB</span></button>
       <button id="btnAddRB"><span class="rb-label">＋ RB</span></button>
-      <button id="btnAddUp">＋ 最終の上</button>
+      <button id="btnAddUp">＋ 上に追加</button>
       <button id="btnAddOld">＋ 最終の下</button>
       <button class="danger" id="btnClear">全履歴をクリア</button>
     </div>
@@ -700,14 +700,8 @@
   }
   $("btnAddBB").addEventListener("click", function () { addBonus("BB"); });
   $("btnAddRB").addEventListener("click", function () { addBonus("RB"); });
-  // 最終のすぐ上に枠を追加（履歴を上から順に入力していて枠が足りないとき用）
-  $("btnAddUp").addEventListener("click", function () {
-    bonuses.unshift({ type: "BB", g: 0 });
-    selected = null;
-    render();
-    var inps = $("histBody").querySelectorAll("input.rg");
-    if (inps.length) inps[inps.length - 1].focus();
-  });
+  // 現在のすぐ下（前回の位置）に枠を追加
+  $("btnAddUp").addEventListener("click", function () { addBonus("BB"); });
   // 最終の下（下側の一番下）に枠を追加
   $("btnAddOld").addEventListener("click", function () {
     oldBonuses.push({ type: "BB", g: 0 });
